@@ -10,14 +10,12 @@ export class ScoreNumber extends AcGameObject {
         this.time = 0;
         this.images = [];
 
-        // 观察了4399游戏每局目标分数的规律，发现分数每局增加量是个等差数列，每次加270
         this.increment_target_number = 275;
         this.target_number = 375;
         this.level_number = 0;
 
         this.time_left = 60;
         this.shop_bomb_number = 0;
-
         this.numbers = [];
 
         this.add_POS();
@@ -28,36 +26,27 @@ export class ScoreNumber extends AcGameObject {
         this.resize();
         this.get_player_money_number();
 
-        // 给所有的图片的加载事件绑定一个变量，用于所有图片加载好后直接执行render函数
-        // 因为render可能会执行很多次（改变窗口大小），所以不能把绘制图片代码放到onload里面
         for (let img of this.images) {
             img.onload = function () {
                 img.is_load = true;
-            }
+            };
         }
     }
 
-    // 游戏失败后重置游戏时调用的函数
     restart() {
-        console.log("########in score number restart:", this.root_name);
         this.increment_target_number = 275;
         this.target_number = 375;
         this.level_number = 0;
-        // this.time_left = 60;
     }
 
-    // 开始新的一局时会在game_map.start_new_level()函数里面触发
     start_new_level() {
-        console.log("update level target number", this.root_name);
         this.level_number += 1;
         this.update_target_number();
         this.render();
     }
 
-    // 更新目标分数
     update_target_number() {
         this.target_number += this.increment_target_number;
-        // 超过10关后每关目标分增长量固定，2705
         if (this.level_number < 10) {
             this.increment_target_number += 270;
         }
@@ -65,24 +54,12 @@ export class ScoreNumber extends AcGameObject {
 
     add_POS() {
         this.POS = new Array();
-        // 0~9  10:"$"
         this.POS["digital"] = [
-            [0, 0, 30, 50],
-            [30, 0, 25, 50],
-            [60, 0, 30, 50],
-            [90, 0, 30, 50],
-            [2, 50, 28, 50],
-            [30, 50, 30, 50],
-            [60, 50, 30, 50],
-            [90, 50, 30, 50],
-            [0, 102, 30, 50],
-            [30, 102, 30, 50],
-
-            [60, 100, 30, 50],
+            [0, 0, 30, 50], [30, 0, 25, 50], [60, 0, 30, 50], [90, 0, 30, 50],
+            [2, 50, 28, 50], [30, 50, 30, 50], [60, 50, 30, 50], [90, 50, 30, 50],
+            [0, 102, 30, 50], [30, 102, 30, 50], [60, 100, 30, 50],
         ];
 
-        // 0, 1: 数字横坐标和纵坐标的偏移量
-        // 2: 数字图片的缩放比例
         this.POS["money"] = [100, 30, 1];
         this.POS["target"] = [100, 110, 1];
         this.POS["level"] = [840, 30, 1];
@@ -115,7 +92,6 @@ export class ScoreNumber extends AcGameObject {
     }
 
     update() {
-        // 图片都加载好之后执行一次resize
         if (!this.is_start && this.is_all_images_loaded()) {
             this.is_start = true;
             this.render();
@@ -137,33 +113,26 @@ export class ScoreNumber extends AcGameObject {
         this.render();
     }
 
-    // 玩家买了一个技能之后会触发的函数
-    // 用于重新计算剩余金钱
     player_buy_skill(skill_number) {
         let shop = this.playground.game_map.shop;
-        let skill_price = shop.shop_skill_price;  // 技能价格
-        // 金钱不能是负数
+        let skill_price = shop.shop_skill_price;
         if (this.shop_money_number < skill_price[skill_number]) {
             return false;
         }
         if (skill_number === 0) {
-            console.log("player buy a bomb!");
             this.shop_bomb_number += 1;
             this.set_player_bomb_number();
         }
         this.shop_money_number -= skill_price[skill_number];
         this.set_player_money_number();
-        console.log(this.shop_money_number, this.playground.players[0].money);
         this.render();
         return true;
     }
 
-    // 更新玩家持有的雷数
     set_player_bomb_number() {
         this.playground.players[0].bomb.number = this.shop_bomb_number;
     }
 
-    // 获得玩家持有的雷数
     get_player_bomb_number() {
         if (!this.playground.players) {
             this.shop_bomb_number = 0;
@@ -172,12 +141,10 @@ export class ScoreNumber extends AcGameObject {
         }
     }
 
-    // 更新玩家的金钱数
     set_player_money_number() {
         this.playground.players[0].money = this.shop_money_number;
     }
 
-    // 获得玩家的金钱数
     get_player_money_number() {
         if (!this.playground.players) {
             this.shop_money_number = 0;
@@ -195,25 +162,18 @@ export class ScoreNumber extends AcGameObject {
             scale: this.ctx.canvas.height / 820,
         };
 
-        console.log(this.root_name, this.playground.character);
         if (this.root_name === "pop up") {
-            if (this.playground.character === "pop up") {
-                // 绘制数字前需要重新绘制一下背景板，不这样背景板就显示不出来，不清楚bug在哪
-                this.playground.game_map.pop_up.render();
-                this.render_pop_up_score_number(canvas);
-            }
+            return false;
         } else {
             this.ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (this.playground.character === "shop") {
                 this.render_shop_score_number(canvas);
             } else {
-                // 除了商店界面之外，都要绘制游戏的数字（调整窗口大小数字就不会消失了）
                 this.render_game_score_number(canvas);
             }
         }
     }
 
-    // 绘制弹窗界面的数字
     render_pop_up_score_number(canvas) {
         this.get_numbers(this.shop_money_number);
         this.draw_numbers(canvas, this.POS["pop_up_money"], 0);
@@ -221,7 +181,6 @@ export class ScoreNumber extends AcGameObject {
         this.draw_numbers(canvas, this.POS["pop_up_target"], 0);
     }
 
-    // 绘制商店界面的数字
     render_shop_score_number(canvas) {
         this.get_numbers(this.shop_money_number);
         this.draw_numbers(canvas, this.POS["shop_money"], 10);
@@ -229,15 +188,13 @@ export class ScoreNumber extends AcGameObject {
         this.draw_numbers(canvas, this.POS["shop_bomb"], 10);
         this.get_numbers(this.level_number);
         this.draw_numbers(canvas, this.POS["shop_level"], 10);
-
         this.render_shop_skill_price(canvas);
     }
 
     render_shop_skill_price(canvas) {
         let shop = this.playground.game_map.shop;
-        let skill_is_selling = shop.shop_skill_is_selling;  // 技能是否在售
-        let skill_price = shop.shop_skill_price;  // 技能价格
-        // 绘制技能价格
+        let skill_is_selling = shop.shop_skill_is_selling;
+        let skill_price = shop.shop_skill_price;
         for (let i = 0; i < 5; i++) {
             if (skill_is_selling[i]) {
                 this.get_numbers(skill_price[i]);
@@ -246,7 +203,6 @@ export class ScoreNumber extends AcGameObject {
         }
     }
 
-    // 绘制游戏界面中的数字
     render_game_score_number(canvas) {
         this.get_numbers(this.shop_money_number);
         this.draw_numbers(canvas, this.POS["money"], 10);
@@ -256,16 +212,61 @@ export class ScoreNumber extends AcGameObject {
         this.draw_numbers(canvas, this.POS["level"], 10);
         this.get_numbers(this.time_left);
         this.draw_numbers(canvas, this.POS["timer"], 10);
+        this.render_word_banner(canvas);
     }
 
-    // 按照传入的位置绘制数字
+    render_word_banner(canvas) {
+        let title = "本次单词";
+        let prompt_text = this.playground.get_current_prompt_text();
+        let book_name = `词书：${this.playground.get_selected_word_book_name()}`;
+        let box_x = canvas.scale * 270;
+        let box_y = canvas.scale * 15;
+        let box_width = canvas.scale * 420;
+        let box_height = canvas.scale * 105;
+
+        this.ctx.save();
+        this.ctx.fillStyle = "rgba(51, 26, 7, 0.84)";
+        this.ctx.fillRect(box_x, box_y, box_width, box_height);
+        this.ctx.strokeStyle = "rgba(255, 213, 115, 0.95)";
+        this.ctx.lineWidth = 3 * canvas.scale;
+        this.ctx.strokeRect(box_x, box_y, box_width, box_height);
+
+        this.ctx.fillStyle = "#ffd271";
+        this.ctx.font = `bold ${20 * canvas.scale}px sans-serif`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText(title, box_x + box_width / 2, box_y + 22 * canvas.scale);
+
+        let prompt_font_size = prompt_text.length > 10 ? 26 : 32;
+        this.ctx.fillStyle = "#fff8d8";
+        this.ctx.font = `bold ${prompt_font_size * canvas.scale}px sans-serif`;
+        this.ctx.fillText(prompt_text, box_x + box_width / 2, box_y + 56 * canvas.scale);
+
+        this.ctx.fillStyle = "#ffd271";
+        this.ctx.font = `${16 * canvas.scale}px sans-serif`;
+        this.ctx.fillText(book_name, box_x + box_width / 2, box_y + 86 * canvas.scale);
+
+        if (this.playground.roundFeedback) {
+            this.ctx.fillStyle = "rgba(20, 11, 4, 0.88)";
+            this.ctx.fillRect(box_x, box_y + box_height + 8 * canvas.scale, box_width, 34 * canvas.scale);
+            this.ctx.strokeStyle = this.playground.roundFeedbackColor;
+            this.ctx.strokeRect(box_x, box_y + box_height + 8 * canvas.scale, box_width, 34 * canvas.scale);
+            this.ctx.fillStyle = this.playground.roundFeedbackColor;
+            this.ctx.font = `bold ${18 * canvas.scale}px sans-serif`;
+            this.ctx.fillText(
+                this.playground.roundFeedback,
+                box_x + box_width / 2,
+                box_y + box_height + 25 * canvas.scale
+            );
+        }
+        this.ctx.restore();
+    }
+
     draw_numbers(canvas, icon_pos, spacing) {
         let img = this.topfont;
-        // 得分达标时要把分数绘制成绿色
         if (icon_pos === this.POS["money"] && this.shop_money_number >= this.target_number) {
             img = this.gamefontgreen;
         }
-        // 数字槽和图标的距离
         for (let num of this.numbers) {
             let num_pos = this.POS["digital"][num];
             this.ctx.drawImage(
@@ -280,9 +281,8 @@ export class ScoreNumber extends AcGameObject {
         }
     }
 
-    // 将数字拆分成数组
     get_numbers(number) {
         let digits = number.toString().split('');
-        this.numbers = digits.map(Number)
+        this.numbers = digits.map(Number);
     }
 }

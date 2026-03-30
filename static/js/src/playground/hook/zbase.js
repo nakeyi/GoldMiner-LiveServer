@@ -14,25 +14,25 @@ export class Hook extends AcGameObject {
         this.angle = 0;
         this.max_angle = Math.PI * 7 / 18;
 
-        // 1：向左摆动，2：向右摆动，3：发射钩子，4：收回钩子
         this.direction_flag = 1;
-        // 抓到的物品
         this.caught_item = "hook";
-
-        this.direction_tmp = 0;  // 记录发射钩子前的摆动方向
+        this.direction_tmp = 0;
         this.direction = Math.PI / 2 * (this.timedelta / 1000);
-        this.min_tile_length = 0.1;  // 0.1对应20个propetile
+        this.min_tile_length = 0.1;
         this.max_tile_length = 0.7;
         this.tile_length = this.min_tile_length;
         this.base_moved = 0.009;
         this.moved = 0;
-        this.catched = false;  // 是否抓到东西
+        this.catched = false;
         this.catched_money = 0;
         this.money = 0;
         this.is_start = false;
-        this.play_machine_audio_frequency = 200;  // 播放machine音频的间隔（ms）
+        this.play_machine_audio_frequency = 200;
 
-        // 提前定义好的基准值，乘以像素个数来控制图片的大小
+        this.caughtMineral = null;
+        this.caughtMineralSnapshot = null;
+        this.isAnswerCorrect = false;
+
         this.base_scale = this.playground.base_scale;
         this.eps = 0.01;
     }
@@ -41,45 +41,39 @@ export class Hook extends AcGameObject {
         this.load_image();
         this.add_POS();
 
-        // 给所有的图片的加载事件绑定一个变量，用于所有图片加载好后直接执行render函数
-        // 因为render可能会执行很多次（改变窗口大小），所以不能把绘制图片代码放到onload里面
         for (let img of this.images) {
             img.onload = function () {
                 img.is_load = true;
-            }
+            };
         }
     }
 
     tick() {
-        console.log("in hook", this.playground.character);
         if (this.direction_flag > 2 || this.playground.character !== "game") {
             return false;
         }
         this.direction_tmp = this.direction_flag;
         this.direction_flag = 3;
         this.moved = this.base_moved;
-
-        // 设置锁链播放声音的时间控制变量
-        let mp3 = this.playground.audio_machine;
-        // 控制声音轮播的两个时间参数
         this.time_left = 0;
         this.last_time_left = 0;
     }
 
-    // 重置钩子到初始状态
     fresh() {
-        console.log("fresh hook!");
-        // 1：向左摆动，2：向右摆动，3：发射钩子，4：收回钩子
+        if (this.caughtMineral && this.caughtMineral.isBeingCarried) {
+            this.caughtMineral.restore_position();
+        }
         this.direction_flag = 1;
-        // 抓到的物品
         this.caught_item = "hook";
         this.tile_length = this.min_tile_length;
-        this.catched = false;  // 是否抓到东西
+        this.catched = false;
         this.catched_money = 0;
+        this.caughtMineral = null;
+        this.caughtMineralSnapshot = null;
+        this.isAnswerCorrect = false;
     }
 
     update() {
-        // 不是游戏界面就不更新钩子
         if (this.playground.character !== "game") {
             return false;
         }
@@ -90,9 +84,7 @@ export class Hook extends AcGameObject {
         this.update_catch();
     }
 
-    // 钩子的图片在最后绘制，这样就能显示在最上层
     late_update() {
-        // 图片都加载好之后执行一次render
         if (!this.is_start && this.is_all_images_loaded()) {
             this.is_start = true;
         } else {
@@ -109,23 +101,28 @@ export class Hook extends AcGameObject {
         return true;
     }
 
-    // 检测是否抓到金矿，并返回抓到了那个金矿
     update_catch() {
+        if (this.direction_flag !== 3 || this.catched) {
+            return false;
+        }
+
         for (let i = 0; i < this.playground.miners.length; i++) {
             let miner = this.playground.miners[i];
+            if (miner.isBeingCarried) {
+                continue;
+            }
             if (this.is_collision(miner)) {
                 this.catched = true;
+                this.caughtMineral = miner;
                 return miner;
             }
         }
+        return false;
     }
 
-    // 将抓到的价格加入到player的金钱 和 score_number的金钱里面
     add_money() {
         this.player.money += this.catched_money;
-        // this.score_number.shop_money_number += this.catched_money;
         this.score_number.render();
-        console.log("add:", this.catched_money, "all:", this.score_number.shop_money_number);
     }
 
     get_dist(x1, y1, x2, y2) {
@@ -142,78 +139,127 @@ export class Hook extends AcGameObject {
         return false;
     }
 
+    get_caught_item_name(miner_name) {
+        if (miner_name === "tnt") {
+            return "hook_tnt_fragment";
+        }
+        return "hook_" + miner_name;
+    }
+
+    capture_mineral_for_return() {
+        if (!this.caughtMineral || this.caughtMineralSnapshot) {
+            return false;
+        }
+
+        this.caughtMineralSnapshot = {
+            uuid: this.caughtMineral.uuid,
+            name: this.caughtMineral.name,
+            money: this.caughtMineral.money,
+            weight: this.caughtMineral.weight,
+            caught_item: this.get_caught_item_name(this.caughtMineral.name),
+        };
+        this.caught_item = this.caughtMineralSnapshot.caught_item;
+        this.caughtMineral.set_being_carried(true);
+        this.isAnswerCorrect = this.playground.is_target_mineral(this.caughtMineral);
+        this.catched_money = this.isAnswerCorrect ? this.caughtMineralSnapshot.money : 0;
+        this.moved = this.base_moved * ((Math.abs(1000 - this.caughtMineralSnapshot.weight)) / 1000);
+        this.playground.game_map.game_background.render();
+        return true;
+    }
+
+    reset_caught_state() {
+        this.caught_item = "hook";
+        this.catched = false;
+        this.catched_money = 0;
+        this.caughtMineral = null;
+        this.caughtMineralSnapshot = null;
+        this.isAnswerCorrect = false;
+    }
+
+    resolve_caught_mineral() {
+        if (!this.caughtMineralSnapshot) {
+            this.reset_caught_state();
+            return false;
+        }
+
+        let reward = 0;
+        let caught_mineral = this.caughtMineral;
+        let snapshot = this.caughtMineralSnapshot;
+        let is_answer_correct = this.isAnswerCorrect;
+
+        if (is_answer_correct) {
+            reward = snapshot.money;
+            if (caught_mineral) {
+                if (snapshot.name === "tnt") {
+                    caught_mineral.explode_tnt();
+                } else {
+                    caught_mineral.destroy();
+                    this.play_mineral_caught_audio(snapshot.name);
+                }
+            }
+            this.catched_money = reward;
+            this.add_money();
+            this.playground.audio_point.play();
+        } else if (caught_mineral) {
+            caught_mineral.restore_position();
+        }
+
+        this.reset_caught_state();
+        this.playground.finish_word_round({
+            correct: is_answer_correct,
+            reward: reward,
+        });
+        return true;
+    }
+
+    discard_caught_mineral_by_bomb() {
+        if (!this.caughtMineral) {
+            return false;
+        }
+
+        if (this.caughtMineral.isBeingCarried) {
+            this.caughtMineral.set_being_carried(false);
+        }
+        this.caughtMineral.destroy();
+        this.direction_flag = 4;
+        this.moved = this.base_moved * 2;
+        this.reset_caught_state();
+        this.playground.finish_word_round({
+            skipFeedback: true,
+        });
+        return true;
+    }
+
     update_tile_length() {
         if (this.direction_flag === 3) {
             this.tile_length += this.moved;
-
-            // 播放声音部分（效果并不好，无法像原版那样）
-            // if (this.timedelta / 1000 > 1 / 50) {
-            //     return false;
-            // }
-            // this.time_left += this.timedelta;
-            // if (this.time_left - this.last_time_left > this.play_machine_audio_frequency) {
-            //     this.playground.audio_machine.play();
-            //     this.last_time_left = this.time_left;
-            // }
         } else if (this.direction_flag === 4) {
             this.tile_length -= this.moved;
-            // 播放声音部分（效果并不好，无法像原版那样）
-            // if (this.timedelta / 1000 > 1 / 50) {
-            //     return false;
-            // }
-            // this.time_left += this.timedelta;
-            // if (this.time_left - this.last_time_left > this.play_machine_audio_frequency) {
-            //     this.playground.audio_machine.play();
-            //     this.last_time_left = this.time_left;
-            // }
         }
 
-        // 抓到金矿或者钩子达到最大长度就收回
         if (this.direction_flag === 3 && (this.catched || Math.abs(this.max_tile_length - this.tile_length) < this.eps)) {
             this.direction_flag = 4;
             if (this.catched) {
-                let miner = this.update_catch();
-                if (miner) {
-                    this.catched_money = miner.money;
-                    this.caught_item = "hook_" + miner.name;
-                    miner.is_catched = true;
-                    if (miner.name === "tnt") {  // 如果抓到了tnt要进行一个特判
-                        this.caught_item = "hook_tnt_fragment";
-                        miner.explode_tnt();
-                    } else {
-                        miner.destroy();
-                        this.play_mineral_caught_audio(miner.name);
-                    }
-                    // 根据矿物的质量调整收钩速度
-                    this.moved = this.base_moved * ((Math.abs(1000 - miner.weight)) / 1000);
-                    // 抓到矿物之后刷新游戏背景
-                    this.playground.game_map.game_background.render();
-                }
+                this.capture_mineral_for_return();
             } else {
-                this.moved = this.base_moved * 2;  // 钩子收回时速度更快
+                this.moved = this.base_moved * 2;
             }
         }
 
-        // 收回状态并且钩子收到最短就重新开始转动
         if (this.direction_flag === 4 && Math.abs(this.tile_length - this.min_tile_length) < this.eps) {
+            this.tile_length = this.min_tile_length;
             this.direction_flag = this.direction_tmp;
-            // 如果抓回了东西就计算价值
             if (this.catched) {
-                this.add_money();
-                this.playground.audio_point.play();  // 播放收钱声音
-                this.caught_item = "hook";
-                this.catched = false;
+                this.resolve_caught_mineral();
             }
         }
     }
 
-    // 为不同的矿物配置不同的抓取声音
     play_mineral_caught_audio(name) {
-        console.log("play audio:", name);
         if (name === "gold_1" || name === "gold_2" || name === "gold_3") {
-            this.playground.audio_good.play();  // 播放小金块声音
+            this.playground.audio_good.play();
         } else if (name === "gold_4" || name === "diamond") {
-            this.playground.audio_great.play();  // 播放大金块声音
+            this.playground.audio_great.play();
         } else if (name === "bag") {
             this.playground.audio_bag.play();
         } else {
@@ -225,23 +271,20 @@ export class Hook extends AcGameObject {
         if (this.timedelta / 1000 > 1 / 50) {
             return false;
         }
-        // 控制钩子摆动速度
+
         this.direction = this.max_angle * (this.timedelta / 1000);
 
-        // 控制钩子转动方向和是否转动
         if (this.direction_flag === 1) {
             this.angle -= this.direction;
         } else if (this.direction_flag === 2) {
             this.angle += this.direction;
         }
 
-        // 控制钩子转向
         if (this.angle < -this.max_angle) {
             this.direction_flag = 2;
         } else if (this.angle > this.max_angle) {
             this.direction_flag = 1;
         }
-
     }
 
     update_position() {
@@ -267,10 +310,6 @@ export class Hook extends AcGameObject {
     add_POS() {
         let rad = Math.PI / 180;
 
-        // 0~3：图片坐标和长宽
-        // 4：图片旋转角度
-        // 5：引用的图片
-        // 6：价格
         this.POS = new Array();
         this.POS["hook"] = [139, 66, 53, 36, 0 * rad, this.hook_sheet1, 0];
         this.POS["hook_gold_3"] = [0, 0, 133, 128, 2 * rad, this.hook_sheet1, 250];
@@ -298,25 +337,16 @@ export class Hook extends AcGameObject {
             height: this.ctx.canvas.height,
             scale: this.ctx.canvas.height / this.base_scale,
         };
-
-        // 绘制钩子的碰撞体积
-        // this.draw_collision_volume(scale);
-
         let icon_pos = this.POS[this.caught_item];
-        // this.direction_flag = 3;
-
-        // 按照长度绘制绳子
         this.draw_tile_use_tile_length(canvas, scale, icon_pos);
     }
 
     draw_tile_use_tile_length(canvas, scale, icon_pos) {
         let num = Math.ceil(this.tile_length / this.min_tile_length * 24.5);
         this.draw_tile(canvas, scale, this.angle + 17.76 * Math.PI / 180, num);
-        // 绘制钩子（抓到东西也用这个函数）
         this.draw_hook_image(canvas, scale, icon_pos);
     }
 
-    // 绘制钩子的碰撞体积
     draw_collision_volume(scale) {
         this.ctx.beginPath();
         this.ctx.arc(this.x * scale, this.y * scale, this.radius * scale, 0, Math.PI * 2, false);
@@ -326,7 +356,6 @@ export class Hook extends AcGameObject {
 
     draw_tile(canvas, scale, angle, num) {
         this.ctx.save();
-        // 计算坐标系偏移量，让绳子居中
         this.ctx.translate(
             this.player.x * scale - (this.ropetile.width + 5) / 2 * canvas.scale,
             this.player.y * scale
@@ -340,7 +369,6 @@ export class Hook extends AcGameObject {
                 this.ropetile.width * canvas.scale,
                 this.ropetile.height * canvas.scale
             );
-            // console.log(Math.cos(angle));
         }
         this.ctx.restore();
     }
